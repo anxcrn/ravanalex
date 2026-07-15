@@ -13,7 +13,11 @@ def install_and_run():
     subprocess.run("curl -fsSL https://bun.sh/install | bash", shell=True)
     os.environ["PATH"] = f"/home/user/.bun/bin:{os.environ['PATH']}"
     
-    # 2. Install dependencies for the project
+    # 2. Install Kali Arsenal
+    print("Installing Kali Linux offensive tools...")
+    subprocess.run("apt-get update -qq && xargs -a deploy/gradio_hijack/packages.txt apt-get install -y -qq", shell=True)
+    
+    # 3. Install dependencies for the project
     print("Installing project dependencies...")
     subprocess.run("bun install", shell=True)
     
