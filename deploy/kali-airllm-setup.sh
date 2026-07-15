@@ -69,7 +69,7 @@ print("Loading 70B model via AirLLM... this will take a moment.")
 # AirLLM handles the layer-wise loading automatically.
 MAX_LENGTH = 4096
 model = AutoModel.from_pretrained(
-    "cognitivecomputations/dolphin-2.9-llama3-70b",
+    "failc/DeepSeek-Coder-V2-Lite-Instruct-abliterated",
     compression="4bit" # Compress to fit in lower RAM
 )
 
