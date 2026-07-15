@@ -35,11 +35,12 @@
   },
 
   "mcp": {
-    "agentmemory": {
-      "command": "npx",
-      "args": ["-y", "@agentmemory/agentmemory", "mcp"],
-      "description": "Persistent memory for ALEX — stores targets, credentials, findings, attack paths, shell access, and engagement state across all sessions",
-    },
+    "servers": {
+      "agentmemory": {
+        "type": "local",
+        "command": ["npx", "-y", "@agentmemory/agentmemory", "mcp"]
+      }
+    }
   },
 
   "tools": {
