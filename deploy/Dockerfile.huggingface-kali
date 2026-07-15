@@ -1,0 +1,96 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# RAVAN-ALEX — HUGGINGFACE SPACES (KALI + AIRLLM 70B HYBRID)
+# "The Ultimate Free Weapon: Kali Linux + 70B Offline Brain + Web APIs"
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Use Kali Linux rolling release as the base
+FROM kalilinux/kali-rolling
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH="/root/.bun/bin:/usr/local/go/bin:${PATH}"
+
+# ─── 1. Kali Toolset & Core Dependencies ──────────────────────────────────────
+RUN apt-get update -qq && apt-get install -y -qq \
+    curl wget git unzip build-essential python3 python3-pip python3-venv \
+    nmap masscan nikto john hashcat aircrack-ng netcat-traditional \
+    tcpdump dnsutils whois jq ffmpeg libssl-dev default-jdk \
+    ruby ruby-dev golang cmake libpcap-dev net-tools iproute2 sqlite3 \
+    hydra sqlmap gobuster \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install ProjectDiscovery tools
+RUN go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest && \
+    go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest && \
+    go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest && \
+    go install github.com/ffuf/ffuf/v2@latest
+ENV PATH="/root/go/bin:${PATH}"
+
+# Install Python offensive libraries
+RUN pip3 install --break-system-packages -q impacket pwntools requests beautifulsoup4 scapy cryptography paramiko dnspython pyOpenSSL
+
+# ─── 2. AirLLM Environment (70B Offline Brain) ────────────────────────────────
+RUN mkdir -p /opt/alex-llm
+WORKDIR /opt/alex-llm
+RUN pip3 install --break-system-packages torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu -q
+RUN pip3 install --break-system-packages airllm flask flask-cors -q
+
+# Create the local AirLLM API bridge (OpenAI compatible)
+RUN echo 'from flask import Flask, request, jsonify\n\
+from airllm import AutoModel\n\
+import sys\n\
+app = Flask(__name__)\n\
+print("Loading 70B model via AirLLM... this will take a moment.")\n\
+MAX_LENGTH = 4096\n\
+model = AutoModel.from_pretrained("cognitivecomputations/dolphin-2.9-llama3-70b", compression="4bit")\n\
+@app.route("/v1/chat/completions", methods=["POST"])\n\
+def chat():\n\
+    data = request.json\n\
+    messages = data.get("messages", [])\n\
+    prompt = ""\n\
+    for msg in messages:\n\
+        role = msg.get("role", "user")\n\
+        content = msg.get("content", "")\n\
+        prompt += f"<|im_start|>{role}\\n{content}<|im_end|>\\n"\n\
+    prompt += "<|im_start|>assistant\\n"\n\
+    input_text = [prompt]\n\
+    input_tokens = model.tokenizer(input_text, return_tensors="pt", return_attention_mask=False, truncation=True, max_length=MAX_LENGTH)\n\
+    generation_output = model.generate(input_tokens["input_ids"], max_new_tokens=1000, use_cache=True, return_dict_in_generate=True)\n\
+    output = model.tokenizer.decode(generation_output.sequences[0])\n\
+    response_text = output.split("<|im_start|>assistant\\n")[-1].replace("<|im_end|>", "").strip()\n\
+    return jsonify({\n\
+        "id": "airllm-1",\n\
+        "object": "chat.completion",\n\
+        "created": 1234567890,\n\
+        "model": "dolphin-llama3-70b-airllm",\n\
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": response_text}, "finish_reason": "stop"}]\n\
+    })\n\
+if __name__ == "__main__":\n\
+    app.run(host="0.0.0.0", port=8000)' > airllm_server.py
+
+# ─── 3. Install Bun & Clone ALEX ──────────────────────────────────────────────
+RUN curl -fsSL https://bun.sh/install | bash
+
+WORKDIR /app
+COPY package.json bun.lock ./
+COPY packages/core/package.json ./packages/core/
+COPY packages/alex/package.json ./packages/alex/
+COPY packages/tui/package.json ./packages/tui/
+COPY packages/server/package.json ./packages/server/
+COPY packages/llm/package.json ./packages/llm/
+
+RUN bun install --frozen-lockfile
+COPY . .
+
+# Ensure the .alex directory exists
+RUN mkdir -p /app/.alex && chmod -R 777 /app/.alex
+
+# Make the entrypoint script executable
+RUN chmod +x /app/deploy/hf-kali-entrypoint.sh
+
+# HuggingFace requires binding to port 7860
+ENV PORT=7860
+EXPOSE 7860
+EXPOSE 8000
+
+# Start both AirLLM and ALEX simultaneously
+CMD ["/bin/bash", "/app/deploy/hf-kali-entrypoint.sh"]
