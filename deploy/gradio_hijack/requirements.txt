@@ -1,0 +1,7 @@
+gradio==4.36.1
+airllm
+flask
+flask-cors
+torch
+torchvision
+torchaudio
